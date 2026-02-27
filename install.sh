@@ -150,7 +150,14 @@ fi
 echo ""
 echo "=== Installing Vultra VPN Server ==="
 install -d "$PREFIX"
-install -m 755 "$TARGET" "$PREFIX/"
+# When running from inside PREFIX (e.g. repo cloned at /opt/vultra-vpn-server), avoid "same file" error
+REAL_SCRIPT="$(cd "$SCRIPT_DIR" && pwd -P)"
+REAL_PREFIX="$(cd "$PREFIX" && pwd -P)"
+if [ "$REAL_SCRIPT" = "$REAL_PREFIX" ]; then
+    chmod 755 "$TARGET" 2>/dev/null || true
+else
+    install -m 755 "$TARGET" "$PREFIX/"
+fi
 # Allow binding to privileged ports (e.g. 78) when run as vultra-vpn
 if command -v setcap >/dev/null 2>&1; then
     setcap 'cap_net_bind_service=+ep' "$PREFIX/$TARGET" || true
@@ -158,8 +165,12 @@ if command -v setcap >/dev/null 2>&1; then
 else
     echo "Warning: setcap not found (install libcap2-bin). Service may fail to bind port < 1024."
 fi
-install -m 644 README.md "$PREFIX/" 2>/dev/null || true
-install -m 644 PREMIUM_VERIFY_API.md "$PREFIX/" 2>/dev/null || true
+if [ "$REAL_SCRIPT" = "$REAL_PREFIX" ]; then
+    chmod 644 README.md PREMIUM_VERIFY_API.md 2>/dev/null || true
+else
+    install -m 644 README.md "$PREFIX/" 2>/dev/null || true
+    install -m 644 PREMIUM_VERIFY_API.md "$PREFIX/" 2>/dev/null || true
+fi
 echo "Binary and docs installed to $PREFIX/"
 
 install -d "$SYSTEMD_UNIT_DIR"
