@@ -33,16 +33,18 @@ else
 fi
 
 echo ""
-echo "=== Enable IP forwarding ==="
+echo "=== Enable IP forwarding (Ubuntu 24.04) ==="
 if [ -f /proc/sys/net/ipv4/ip_forward ]; then
-    echo 1 > /proc/sys/net/ipv4/ip_forward
+    # Apply immediately
+    sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || echo 1 > /proc/sys/net/ipv4/ip_forward
+
+    # Persist across reboots
     mkdir -p /etc/sysctl.d
-    if ! grep -q 'net.ipv4.ip_forward' /etc/sysctl.d/99-vultra-wg-forward.conf 2>/dev/null; then
-        echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/99-vultra-wg-forward.conf
-        echo "Created /etc/sysctl.d/99-vultra-wg-forward.conf"
-    fi
+    cat > /etc/sysctl.d/99-vultra-wg-forward.conf << EOF
+net.ipv4.ip_forward=1
+EOF
     sysctl -p /etc/sysctl.d/99-vultra-wg-forward.conf 2>/dev/null || true
-    echo "IP forwarding enabled (persistent)."
+    echo "IP forwarding enabled (persistent via /etc/sysctl.d/99-vultra-wg-forward.conf)."
 else
     echo "Warning: /proc/sys/net/ipv4/ip_forward not found; skipping."
 fi
@@ -93,17 +95,18 @@ else
     SERVER_PUBLIC=$(echo "$SERVER_PRIVATE" | wg pubkey)
     CLIENT_PUBLIC=$(echo "$APP_CLIENT_PRIVATE_KEY" | wg pubkey)
 
-    # PostUp/PostDown: iptables FORWARD and NAT MASQUERADE so VPN clients can reach the internet
+    # PostUp/PostDown: iptables FORWARD and NAT MASQUERADE (Ubuntu 24.04 uses iptables-nft by default)
     cat > "$WG_CONF" << EOF
 # Vultra VPN Server - WireGuard (created by install.sh)
 # Wrapper server forwards to 127.0.0.1:$WG_PORT; start WG with: wg-quick up wg0
 
 [Interface]
 PrivateKey = $SERVER_PRIVATE
+MTU = 1139
 Address = $WG_SUBNET
 ListenPort = $WG_PORT
-PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o $EGRESS_IF -j MASQUERADE
-PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o $EGRESS_IF -j MASQUERADE
+PostUp = iptables -A FORWARD -i wg0 -o $EGRESS_IF -j ACCEPT; iptables -A FORWARD -i $EGRESS_IF -o wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -A POSTROUTING -o $EGRESS_IF -j MASQUERADE
+PostDown = iptables -D FORWARD -i wg0 -o $EGRESS_IF -j ACCEPT; iptables -D FORWARD -i $EGRESS_IF -o wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -D POSTROUTING -o $EGRESS_IF -j MASQUERADE
 
 [Peer]
 # Default Android app client (free/shared peer; all clients use this)
@@ -135,7 +138,16 @@ if command -v ufw >/dev/null 2>&1; then
     fi
     # Allow forwarding from wg0 to egress (so VPN clients can reach internet when UFW is enabled)
     ufw route allow in on wg0 out on "$EGRESS_IF" 2>/dev/null || true
-    echo "UFW rules added: $WG_PORT/udp, forward wg0 -> $EGRESS_IF. Run 'ufw enable' if you use UFW."
+    # Allow wrapper_server UDP ports (WRAPPER_BASE_PORT .. WRAPPER_BASE_PORT+WRAPPER_NUM_PORTS-1)
+    BASE_PORT_VALUE="${WRAPPER_BASE_PORT:-78}"
+    NUM_PORTS_VALUE="${WRAPPER_NUM_PORTS:-100}"
+    if [ -n "$NUM_PORTS_VALUE" ] && [ "$NUM_PORTS_VALUE" -gt 0 ] 2>/dev/null; then
+        END_PORT=$((BASE_PORT_VALUE + NUM_PORTS_VALUE - 1))
+        ufw allow "${BASE_PORT_VALUE}:${END_PORT}/udp" 2>/dev/null || true
+        echo "UFW rules added: $WG_PORT/udp, forward wg0 -> $EGRESS_IF, wrapper UDP ports ${BASE_PORT_VALUE}-${END_PORT}. Run 'ufw enable' if you use UFW."
+    else
+        echo "UFW rules added: $WG_PORT/udp, forward wg0 -> $EGRESS_IF. (Wrapper port range not added: invalid WRAPPER_NUM_PORTS.)"
+    fi
 else
     echo "UFW not found; skipping UFW rules. Use iptables or your firewall as needed."
 fi

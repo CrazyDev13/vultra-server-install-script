@@ -14,6 +14,11 @@ RuntimeDirectoryMode=0750
 # Load config from env file (create from vultra-vpn-server.env.example)
 EnvironmentFile=-/etc/default/vultra-vpn-server
 
+# Logging: always enable and write to RuntimeDirectory (writable by service).
+# Override WRAPPER_LOG_FILE in env file for a different path (e.g. /var/log).
+Environment=WRAPPER_LOG=1
+Environment=WRAPPER_LOG_FILE=/run/vultra-vpn-server/server.log
+
 # All args from EnvironmentFile. Set PREMIUM_VERIFY_URL for premium/expiry check (wrapper calls API).
 ExecStart=/opt/vultra-vpn-server/wrapper_server ${WRAPPER_BASE_PORT} ${WRAPPER_NUM_PORTS} ${WG_SERVER} ${WG_PORT} ${WRAPPER_KEY_HEX}
 
@@ -32,7 +37,8 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadOnlyPaths=/opt/vultra-vpn-server /etc/default
+ReadOnlyPaths=/etc/default
+ReadWritePaths=/opt/vultra-vpn-server
 InaccessibleDirectories=/root /home
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
