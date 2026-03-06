@@ -102,11 +102,11 @@ else
 
 [Interface]
 PrivateKey = $SERVER_PRIVATE
-MTU = 1139
+MTU = 736
 Address = $WG_SUBNET
 ListenPort = $WG_PORT
-PostUp = iptables -A FORWARD -i wg0 -o $EGRESS_IF -j ACCEPT; iptables -A FORWARD -i $EGRESS_IF -o wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -A POSTROUTING -o $EGRESS_IF -j MASQUERADE
-PostDown = iptables -D FORWARD -i wg0 -o $EGRESS_IF -j ACCEPT; iptables -D FORWARD -i $EGRESS_IF -o wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -D POSTROUTING -o $EGRESS_IF -j MASQUERADE
+PostUp = iptables -A FORWARD -i wg0 -o $EGRESS_IF -j ACCEPT; iptables -A FORWARD -i $EGRESS_IF -o wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -A POSTROUTING -o $EGRESS_IF -j MASQUERADE; iptables -t mangle -A FORWARD -o wg0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 736
+PostDown = iptables -D FORWARD -i wg0 -o $EGRESS_IF -j ACCEPT; iptables -D FORWARD -i $EGRESS_IF -o wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -D POSTROUTING -o $EGRESS_IF -j MASQUERADE; iptables -t mangle -D FORWARD -o wg0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 736
 
 [Peer]
 # Default Android app client (free/shared peer; all clients use this)
